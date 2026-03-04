@@ -48,7 +48,11 @@ sudo systemctl status openclaw-manager.service --no-pager
 /opt/openclaw/scripts/oc-client bws-bot status --json
 /opt/openclaw/scripts/oc-client bws-bot devices list --json
 ```
-
+## Screenshot
+  <p align="center">
+    <img src="./docs/Screenshot 2026-03-04 at 14.09.59.png" alt="Manager Dashboard"
+  width="900" />
+  </p>
 ## Docs
 
 - Installer guide: [`INSTALLER.md`](./INSTALLER.md)
