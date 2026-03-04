@@ -54,6 +54,28 @@
             <button id="copyTemplateBtn" class="rounded bg-cyan-700 px-3 py-2 text-sm hover:bg-cyan-600">Copy</button>
             <button id="useEquivalentBtn" class="rounded bg-violet-700 px-3 py-2 text-sm hover:bg-violet-600">Use OpenClaw Equivalent</button>
           </div>
+
+          <div class="mt-4 border-t border-slate-800 pt-4">
+            <div class="mb-2 text-sm font-semibold">Instance Terminal (OpenClaw)</div>
+            <label class="mb-1 block text-xs text-slate-400">Type command for selected client (example: <code>openclaw models add ...</code>)</label>
+            <div class="grid gap-2 md:grid-cols-[1fr_auto]">
+              <input id="clientCommandInput" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500" placeholder="openclaw models add provider model-id --json" />
+              <button id="runClientCommandBtn" class="rounded bg-fuchsia-700 px-3 py-2 text-sm hover:bg-fuchsia-600">Run For Client</button>
+            </div>
+            <p class="mt-1 text-xs text-slate-500">Runs through <code>/opt/openclaw/scripts/oc-client &lt;client&gt; ...</code></p>
+          </div>
+
+          <div class="mt-4 border-t border-slate-800 pt-4">
+            <div class="mb-2 text-sm font-semibold">Config Editor (openclaw.json)</div>
+            <div class="mb-2 grid gap-2 md:grid-cols-[1fr_auto_auto_auto]">
+              <select id="configClient" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500"></select>
+              <button id="loadConfigBtn" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">Load</button>
+              <button id="formatConfigBtn" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">Format</button>
+              <button id="saveConfigBtn" class="rounded bg-emerald-700 px-3 py-2 text-sm hover:bg-emerald-600">Save</button>
+            </div>
+            <textarea id="configEditor" class="h-60 w-full rounded border border-slate-700 bg-slate-950 p-3 font-mono text-xs outline-none focus:border-cyan-500" spellcheck="false" placeholder="Load a client config to edit JSON..."></textarea>
+            <p class="mt-1 text-xs text-slate-500">Save creates a timestamped backup before writing.</p>
+          </div>
         </div>
       </div>
 
@@ -114,6 +136,9 @@
       const templateClient = document.getElementById("templateClient");
       const ocClientTemplate = document.getElementById("ocClientTemplate");
       const commandInput = document.getElementById("commandInput");
+      const clientCommandInput = document.getElementById("clientCommandInput");
+      const configClient = document.getElementById("configClient");
+      const configEditor = document.getElementById("configEditor");
 
       let selectedTemplateSubcommand = "status --json";
 
@@ -142,6 +167,10 @@
             <button data-action="restart" data-client="${client}" class="rounded bg-amber-700 px-2 py-1 text-xs hover:bg-amber-600">Restart</button>
             <button data-action="status" data-client="${client}" class="rounded bg-violet-700 px-2 py-1 text-xs hover:bg-violet-600">Status</button>
             <button data-action="health" data-client="${client}" class="rounded bg-cyan-700 px-2 py-1 text-xs hover:bg-cyan-600">Health</button>
+            <button data-action="cmd-status" data-client="${client}" class="rounded bg-indigo-700 px-2 py-1 text-xs hover:bg-indigo-600">OC Status</button>
+            <button data-action="cmd-models" data-client="${client}" class="rounded bg-indigo-700 px-2 py-1 text-xs hover:bg-indigo-600">OC Models</button>
+            <button data-action="cmd-devices" data-client="${client}" class="rounded bg-indigo-700 px-2 py-1 text-xs hover:bg-indigo-600">OC Devices</button>
+            <button data-action="config" data-client="${client}" class="rounded bg-teal-700 px-2 py-1 text-xs hover:bg-teal-600">Config</button>
             <button data-action="logs" data-client="${client}" class="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600">Logs</button>
           </div>
         `;
@@ -163,6 +192,9 @@
 
       function renderClients(clients) {
         templateClient.innerHTML = clients.length
+          ? clients.map((c) => `<option value="${c.client}">${c.client}</option>`).join("")
+          : `<option value="">No clients</option>`;
+        configClient.innerHTML = clients.length
           ? clients.map((c) => `<option value="${c.client}">${c.client}</option>`).join("")
           : `<option value="">No clients</option>`;
 
@@ -203,10 +235,31 @@
 
       async function doAction(client, action) {
         try {
+          if (action === "config") {
+            configClient.value = client;
+            await loadClientConfig(client);
+            return;
+          }
           if (action === "logs") {
             const data = await api(`/api/clients/${encodeURIComponent(client)}/logs?lines=200`);
             logClientLabel.textContent = `Client: ${client}`;
             logOutput.textContent = data.log || "";
+            return;
+          }
+          if (action.startsWith("cmd-")) {
+            const shortcuts = {
+              "cmd-status": "openclaw status --json",
+              "cmd-models": "openclaw models list --json",
+              "cmd-devices": "openclaw devices list --json",
+            };
+            const command = shortcuts[action];
+            const data = await api(`/api/clients/${encodeURIComponent(client)}/openclaw`, {
+              method: "POST",
+              body: JSON.stringify({ command }),
+            });
+            setMessage(`${client}: ${action} OK`);
+            logClientLabel.textContent = `OpenClaw output (${client})`;
+            logOutput.textContent = data.output || "";
             return;
           }
           const data = await api(`/api/clients/${encodeURIComponent(client)}/action`, {
@@ -237,6 +290,32 @@
         } catch (err) {
           setMessage(`Command failed - ${err.message}`, true);
         }
+      }
+
+      async function runClientScopedCommand(client, command) {
+        const data = await api(`/api/clients/${encodeURIComponent(client)}/openclaw`, {
+          method: "POST",
+          body: JSON.stringify({ command }),
+        });
+        setMessage(`Client command OK (${client})`);
+        logClientLabel.textContent = `Client command output (${client})`;
+        logOutput.textContent = data.output || "";
+      }
+
+      async function loadClientConfig(client) {
+        const data = await api(`/api/clients/${encodeURIComponent(client)}/config`);
+        configEditor.value = data.content || "";
+        setMessage(`Loaded config for ${client}`);
+      }
+
+      async function saveClientConfig(client, content) {
+        const data = await api(`/api/clients/${encodeURIComponent(client)}/config`, {
+          method: "POST",
+          body: JSON.stringify({ content }),
+        });
+        setMessage(`Saved config for ${client} (backup: ${data.backup_path})`);
+        logClientLabel.textContent = `Config save (${client})`;
+        logOutput.textContent = `Saved: ${data.config_path}\nBackup: ${data.backup_path}\nBytes: ${data.bytes_written}`;
       }
 
       document.getElementById("refreshBtn").addEventListener("click", loadClients);
@@ -289,6 +368,80 @@
         const equivalent = openclawEquivalentValue();
         commandInput.value = equivalent;
         setMessage(`Prepared equivalent command: ${equivalent}`);
+      });
+
+      document.getElementById("runClientCommandBtn").addEventListener("click", async () => {
+        const client = templateClient.value;
+        const command = clientCommandInput.value.trim();
+        if (!client) {
+          setMessage("Select a client first.", true);
+          return;
+        }
+        if (!command) {
+          setMessage("Type a command to run for the selected client.", true);
+          return;
+        }
+        try {
+          await runClientScopedCommand(client, command);
+        } catch (err) {
+          setMessage(`Client command failed - ${err.message}`, true);
+        }
+      });
+
+      document.getElementById("loadConfigBtn").addEventListener("click", async () => {
+        const client = configClient.value;
+        if (!client) {
+          setMessage("Select a client first.", true);
+          return;
+        }
+        try {
+          await loadClientConfig(client);
+        } catch (err) {
+          setMessage(`Load config failed - ${err.message}`, true);
+        }
+      });
+
+      document.getElementById("formatConfigBtn").addEventListener("click", () => {
+        const content = configEditor.value.trim();
+        if (!content) return;
+        try {
+          const parsed = JSON.parse(content);
+          configEditor.value = `${JSON.stringify(parsed, null, 2)}\n`;
+          setMessage("JSON formatted.");
+        } catch (err) {
+          setMessage(`Format failed - ${err.message}`, true);
+        }
+      });
+
+      document.getElementById("saveConfigBtn").addEventListener("click", async () => {
+        const client = configClient.value;
+        if (!client) {
+          setMessage("Select a client first.", true);
+          return;
+        }
+        const content = configEditor.value;
+        if (!content.trim()) {
+          setMessage("Config editor is empty.", true);
+          return;
+        }
+        try {
+          await saveClientConfig(client, content);
+        } catch (err) {
+          setMessage(`Save config failed - ${err.message}`, true);
+        }
+      });
+
+      clientCommandInput.addEventListener("keydown", async (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        const client = templateClient.value;
+        const command = event.target.value.trim();
+        if (!client || !command) return;
+        try {
+          await runClientScopedCommand(client, command);
+        } catch (err) {
+          setMessage(`Client command failed - ${err.message}`, true);
+        }
       });
 
       document.getElementById("devicesApproveBtn").addEventListener("click", async () => {

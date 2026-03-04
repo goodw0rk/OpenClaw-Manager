@@ -5,7 +5,9 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
@@ -14,6 +16,7 @@ from flask import Flask, jsonify, render_template, request
 ROOT = Path("/opt/openclaw")
 INSTANCES_DIR = ROOT / "instances"
 MANAGER_SCRIPT = ROOT / "scripts" / "openclaw_client_instance.sh"
+OC_CLIENT_SCRIPT = ROOT / "scripts" / "oc-client"
 OPENCLAW_BIN = os.getenv("OPENCLAW_BIN", "openclaw")
 
 app = Flask(__name__)
@@ -200,7 +203,10 @@ def parse_openclaw_command(raw_command: str) -> List[str]:
             if positionals:
                 raise ValueError("models status does not accept positional arguments")
         else:
-            raise ValueError("allowed models commands: list, status")
+            # Allow model-management subcommands (e.g., add/remove/default) with safe tokens.
+            # Tokens were already vetted by is_safe_token() above.
+            if not sub_args and sub in {"add", "remove", "rm", "set-default", "default"}:
+                raise ValueError(f"models {sub} requires additional arguments")
 
     elif top == "devices":
         if not rest:
@@ -272,7 +278,9 @@ def parse_openclaw_command(raw_command: str) -> List[str]:
         if positionals:
             raise ValueError("health does not accept positional arguments")
     else:
-        raise ValueError("allowed top-level commands: models, devices, approvals, status, health")
+        raise ValueError(
+            "allowed top-level commands: models, devices, approvals, status, health"
+        )
 
     return [OPENCLAW_BIN, *tokens]
 
@@ -387,6 +395,40 @@ def api_openclaw_command():
     return jsonify({"ok": True, "command": " ".join(args), "output": out})
 
 
+@app.post("/api/clients/<client>/openclaw")
+def api_client_openclaw_command(client: str):
+    if not valid_client_name(client):
+        return jsonify({"ok": False, "error": "invalid client name"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    raw_command = str(payload.get("command", "")).strip()
+
+    if not (INSTANCES_DIR / client / "instance.env").exists():
+        return jsonify({"ok": False, "error": f"client not initialized: {client}"}), 404
+    if not OC_CLIENT_SCRIPT.exists():
+        return jsonify({"ok": False, "error": f"missing script: {OC_CLIENT_SCRIPT}"}), 500
+
+    try:
+        parsed = parse_openclaw_command(raw_command)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # parse_openclaw_command returns [OPENCLAW_BIN, <subcommands...>].
+    client_args = [str(OC_CLIENT_SCRIPT), client, *parsed[1:]]
+    code, out, err = run_cmd(client_args, timeout=45)
+    if code != 0:
+        return jsonify({"ok": False, "error": err or out or "command failed"}), 400
+
+    return jsonify(
+        {
+            "ok": True,
+            "client": client,
+            "command": " ".join(client_args),
+            "output": out,
+        }
+    )
+
+
 @app.get("/api/clients/<client>/logs")
 def api_client_logs(client: str):
     if not valid_client_name(client):
@@ -406,6 +448,83 @@ def api_client_logs(client: str):
         return jsonify({"ok": False, "error": err or "failed to read log"}), 500
 
     return jsonify({"ok": True, "client": client, "log_path": str(log_path), "log": out})
+
+
+@app.get("/api/clients/<client>/config")
+def api_client_config_get(client: str):
+    if not valid_client_name(client):
+        return jsonify({"ok": False, "error": "invalid client name"}), 400
+
+    config_path = INSTANCES_DIR / client / "openclaw.json"
+    if not config_path.exists():
+        return jsonify({"ok": False, "error": f"config not found: {config_path}"}), 404
+
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+        parsed = json.loads(raw)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"failed to read config: {exc}"}), 500
+
+    pretty = json.dumps(parsed, indent=2, ensure_ascii=False) + "\n"
+    return jsonify(
+        {
+            "ok": True,
+            "client": client,
+            "config_path": str(config_path),
+            "content": pretty,
+        }
+    )
+
+
+@app.post("/api/clients/<client>/config")
+def api_client_config_save(client: str):
+    if not valid_client_name(client):
+        return jsonify({"ok": False, "error": "invalid client name"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    content = payload.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return jsonify({"ok": False, "error": "content is required"}), 400
+
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError as exc:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": f"invalid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}",
+                }
+            ),
+            400,
+        )
+
+    config_path = INSTANCES_DIR / client / "openclaw.json"
+    if not config_path.exists():
+        return jsonify({"ok": False, "error": f"config not found: {config_path}"}), 404
+
+    normalized = json.dumps(parsed, indent=2, ensure_ascii=False) + "\n"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_path = config_path.with_name(f"{config_path.name}.bak.{timestamp}")
+    temp_path = config_path.with_name(f"{config_path.name}.tmp")
+
+    try:
+        shutil.copy2(config_path, backup_path)
+        temp_path.write_text(normalized, encoding="utf-8")
+        temp_path.replace(config_path)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"failed to save config: {exc}"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "client": client,
+            "config_path": str(config_path),
+            "backup_path": str(backup_path),
+            "bytes_written": len(normalized.encode("utf-8")),
+            "message": "config saved",
+        }
+    )
 
 
 @app.get("/api/health")
