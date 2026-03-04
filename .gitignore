@@ -1,0 +1,16 @@
+# Runtime/state
+instances/
+manager/manager.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+*.swp
+*.swo

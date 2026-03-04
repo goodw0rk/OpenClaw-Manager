@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenClaw Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight">OpenClaw Client Manager</h1>
+          <p class="text-sm text-slate-400">Manage isolated clients under <code>/opt/openclaw/instances</code></p>
+        </div>
+        <button id="refreshBtn" class="rounded bg-cyan-600 px-3 py-2 text-sm font-medium hover:bg-cyan-500">Refresh</button>
+      </div>
+
+      <div class="mb-6 grid gap-4 md:grid-cols-2">
+        <div class="rounded border border-slate-800 bg-slate-900 p-4">
+          <div class="mb-2 text-sm font-semibold">Run OpenClaw CLI</div>
+          <label class="mb-1 block text-xs text-slate-400">Command</label>
+          <input id="commandInput" class="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500" placeholder="openclaw models list --json" />
+          <p class="mt-1 text-xs text-slate-500">Allowed: models, devices, approvals, status, health</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button id="runCommandBtn" class="rounded bg-indigo-600 px-3 py-2 text-sm font-medium hover:bg-indigo-500">Run</button>
+            <button data-openclaw-cmd="openclaw models list --json" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">Models</button>
+            <button data-openclaw-cmd="openclaw devices list --json" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">Devices</button>
+            <button data-openclaw-cmd="openclaw approvals get --json" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">Approvals</button>
+            <button data-openclaw-cmd="openclaw status --json" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">Status</button>
+          </div>
+
+          <div class="mt-4 grid gap-2 md:grid-cols-[1fr_auto_auto]">
+            <input id="pairingRequestId" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500" placeholder="Pairing request id (req_...)" />
+            <button id="devicesApproveBtn" class="rounded bg-emerald-700 px-3 py-2 text-sm hover:bg-emerald-600">Approve</button>
+            <button id="devicesRejectBtn" class="rounded bg-rose-700 px-3 py-2 text-sm hover:bg-rose-600">Reject</button>
+          </div>
+        </div>
+
+        <div class="rounded border border-slate-800 bg-slate-900 p-4">
+          <div class="mb-2 text-sm font-semibold">oc-client Template</div>
+          <label class="mb-1 block text-xs text-slate-400">Client</label>
+          <select id="templateClient" class="mb-3 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500"></select>
+
+          <div class="mb-3 flex flex-wrap gap-2">
+            <button data-template-cmd="status --json" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">status</button>
+            <button data-template-cmd="models list --json" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">models list</button>
+            <button data-template-cmd="devices list --json" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">devices list</button>
+            <button data-template-cmd="approvals get --json" class="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600">approvals get</button>
+          </div>
+
+          <pre id="ocClientTemplate" class="min-h-16 overflow-auto rounded bg-black/40 p-3 text-xs text-slate-200"></pre>
+          <div class="mt-2 flex gap-2">
+            <button id="copyTemplateBtn" class="rounded bg-cyan-700 px-3 py-2 text-sm hover:bg-cyan-600">Copy</button>
+            <button id="useEquivalentBtn" class="rounded bg-violet-700 px-3 py-2 text-sm hover:bg-violet-600">Use OpenClaw Equivalent</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-6 grid gap-4 rounded border border-slate-800 bg-slate-900 p-4 md:grid-cols-4">
+        <div>
+          <label class="mb-1 block text-xs text-slate-400">Client Name</label>
+          <input id="newClientName" class="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500" placeholder="client-c" />
+        </div>
+        <div>
+          <label class="mb-1 block text-xs text-slate-400">Port</label>
+          <input id="newClientPort" type="number" class="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500" placeholder="19013" />
+        </div>
+        <div class="flex items-end">
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input id="autostart" type="checkbox" checked />
+            <span>Auto-start</span>
+          </label>
+        </div>
+        <div class="flex items-end">
+          <button id="createBtn" class="w-full rounded bg-emerald-600 px-3 py-2 text-sm font-medium hover:bg-emerald-500">Create Client</button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto rounded border border-slate-800 bg-slate-900">
+        <table class="min-w-full divide-y divide-slate-800 text-sm">
+          <thead class="bg-slate-950">
+            <tr>
+              <th class="px-3 py-2 text-left">Client</th>
+              <th class="px-3 py-2 text-left">Port</th>
+              <th class="px-3 py-2 text-left">Status</th>
+              <th class="px-3 py-2 text-left">Socket</th>
+              <th class="px-3 py-2 text-left">WS</th>
+              <th class="px-3 py-2 text-left">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="clientsBody" class="divide-y divide-slate-800"></tbody>
+        </table>
+      </div>
+
+      <div class="mt-6 rounded border border-slate-800 bg-slate-900 p-4">
+        <div class="mb-2 flex items-center justify-between">
+          <h2 class="text-sm font-semibold">Logs</h2>
+          <span id="logClientLabel" class="text-xs text-slate-400">No client selected</span>
+        </div>
+        <pre id="logOutput" class="h-72 overflow-auto rounded bg-black/40 p-3 text-xs text-slate-200"></pre>
+      </div>
+
+      <div class="mt-4 rounded border border-slate-800 bg-slate-900 p-3">
+        <div id="message" class="text-sm text-slate-300"></div>
+      </div>
+    </div>
+
+    <script>
+      const clientsBody = document.getElementById("clientsBody");
+      const message = document.getElementById("message");
+      const logOutput = document.getElementById("logOutput");
+      const logClientLabel = document.getElementById("logClientLabel");
+      const templateClient = document.getElementById("templateClient");
+      const ocClientTemplate = document.getElementById("ocClientTemplate");
+      const commandInput = document.getElementById("commandInput");
+
+      let selectedTemplateSubcommand = "status --json";
+
+      function setMessage(text, isError = false) {
+        message.textContent = text;
+        message.className = isError ? "text-sm text-rose-400" : "text-sm text-emerald-400";
+      }
+
+      async function api(path, options = {}) {
+        const res = await fetch(path, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error || `Request failed: ${res.status}`);
+        }
+        return data;
+      }
+
+      function actionButtons(client) {
+        return `
+          <div class="flex flex-wrap gap-1">
+            <button data-action="start" data-client="${client}" class="rounded bg-emerald-700 px-2 py-1 text-xs hover:bg-emerald-600">Start</button>
+            <button data-action="stop" data-client="${client}" class="rounded bg-rose-700 px-2 py-1 text-xs hover:bg-rose-600">Stop</button>
+            <button data-action="restart" data-client="${client}" class="rounded bg-amber-700 px-2 py-1 text-xs hover:bg-amber-600">Restart</button>
+            <button data-action="status" data-client="${client}" class="rounded bg-violet-700 px-2 py-1 text-xs hover:bg-violet-600">Status</button>
+            <button data-action="health" data-client="${client}" class="rounded bg-cyan-700 px-2 py-1 text-xs hover:bg-cyan-600">Health</button>
+            <button data-action="logs" data-client="${client}" class="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600">Logs</button>
+          </div>
+        `;
+      }
+
+      function templateValue() {
+        const client = templateClient.value || "<client>";
+        return `/opt/openclaw/scripts/oc-client ${client} ${selectedTemplateSubcommand}`;
+      }
+
+      function openclawEquivalentValue() {
+        const parts = selectedTemplateSubcommand.split(" ");
+        return `openclaw ${parts.join(" ")}`;
+      }
+
+      function renderTemplateValue() {
+        ocClientTemplate.textContent = templateValue();
+      }
+
+      function renderClients(clients) {
+        templateClient.innerHTML = clients.length
+          ? clients.map((c) => `<option value="${c.client}">${c.client}</option>`).join("")
+          : `<option value="">No clients</option>`;
+
+        renderTemplateValue();
+
+        if (!clients.length) {
+          clientsBody.innerHTML = `<tr><td class="px-3 py-4 text-slate-400" colspan="6">No clients found.</td></tr>`;
+          return;
+        }
+
+        clientsBody.innerHTML = clients
+          .map((c) => {
+            const running = (c.process || "").includes("running");
+            const statusClass = running ? "text-emerald-400" : "text-rose-400";
+            return `
+              <tr>
+                <td class="px-3 py-2 font-medium">${c.client}</td>
+                <td class="px-3 py-2">${c.port || "-"}</td>
+                <td class="px-3 py-2 ${statusClass}">${c.process || "-"}</td>
+                <td class="px-3 py-2">${c.socket || "-"}</td>
+                <td class="px-3 py-2"><code>${c.ws_url}</code></td>
+                <td class="px-3 py-2">${actionButtons(c.client)}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      async function loadClients() {
+        try {
+          const data = await api("/api/clients");
+          renderClients(data.clients);
+          setMessage(`Loaded ${data.count} client(s).`);
+        } catch (err) {
+          setMessage(err.message, true);
+        }
+      }
+
+      async function doAction(client, action) {
+        try {
+          if (action === "logs") {
+            const data = await api(`/api/clients/${encodeURIComponent(client)}/logs?lines=200`);
+            logClientLabel.textContent = `Client: ${client}`;
+            logOutput.textContent = data.log || "";
+            return;
+          }
+          const data = await api(`/api/clients/${encodeURIComponent(client)}/action`, {
+            method: "POST",
+            body: JSON.stringify({ action }),
+          });
+          setMessage(`${client}: ${action} OK`);
+          if (data.output) {
+            logClientLabel.textContent = `Action output (${client})`;
+            logOutput.textContent = data.output;
+          }
+          await loadClients();
+        } catch (err) {
+          setMessage(`${client}: ${action} failed - ${err.message}`, true);
+        }
+      }
+
+      async function runTypedCommand(command) {
+        try {
+          const data = await api("/api/openclaw/command", {
+            method: "POST",
+            body: JSON.stringify({ command }),
+          });
+          setMessage(`Command OK: ${data.command}`);
+          logClientLabel.textContent = "Command output";
+          logOutput.textContent = data.output || "";
+          await loadClients();
+        } catch (err) {
+          setMessage(`Command failed - ${err.message}`, true);
+        }
+      }
+
+      document.getElementById("refreshBtn").addEventListener("click", loadClients);
+
+      document.getElementById("runCommandBtn").addEventListener("click", async () => {
+        const command = commandInput.value.trim();
+        if (!command) {
+          setMessage("Please enter a command.", true);
+          return;
+        }
+        await runTypedCommand(command);
+      });
+
+      commandInput.addEventListener("keydown", async (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        const command = event.target.value.trim();
+        if (!command) return;
+        await runTypedCommand(command);
+      });
+
+      document.querySelectorAll("button[data-openclaw-cmd]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const cmd = button.dataset.openclawCmd;
+          commandInput.value = cmd;
+          await runTypedCommand(cmd);
+        });
+      });
+
+      document.querySelectorAll("button[data-template-cmd]").forEach((button) => {
+        button.addEventListener("click", () => {
+          selectedTemplateSubcommand = button.dataset.templateCmd;
+          renderTemplateValue();
+        });
+      });
+
+      templateClient.addEventListener("change", renderTemplateValue);
+
+      document.getElementById("copyTemplateBtn").addEventListener("click", async () => {
+        const value = templateValue();
+        try {
+          await navigator.clipboard.writeText(value);
+          setMessage(`Copied: ${value}`);
+        } catch (_err) {
+          setMessage("Copy failed. Clipboard not available.", true);
+        }
+      });
+
+      document.getElementById("useEquivalentBtn").addEventListener("click", () => {
+        const equivalent = openclawEquivalentValue();
+        commandInput.value = equivalent;
+        setMessage(`Prepared equivalent command: ${equivalent}`);
+      });
+
+      document.getElementById("devicesApproveBtn").addEventListener("click", async () => {
+        const requestId = document.getElementById("pairingRequestId").value.trim();
+        if (!requestId) {
+          setMessage("Pairing request id is required.", true);
+          return;
+        }
+        const cmd = `openclaw devices approve ${requestId} --json`;
+        commandInput.value = cmd;
+        await runTypedCommand(cmd);
+      });
+
+      document.getElementById("devicesRejectBtn").addEventListener("click", async () => {
+        const requestId = document.getElementById("pairingRequestId").value.trim();
+        if (!requestId) {
+          setMessage("Pairing request id is required.", true);
+          return;
+        }
+        const cmd = `openclaw devices reject ${requestId} --json`;
+        commandInput.value = cmd;
+        await runTypedCommand(cmd);
+      });
+
+      document.getElementById("createBtn").addEventListener("click", async () => {
+        const client = document.getElementById("newClientName").value.trim();
+        const port = document.getElementById("newClientPort").value.trim();
+        const autostart = document.getElementById("autostart").checked;
+        try {
+          await api("/api/clients", {
+            method: "POST",
+            body: JSON.stringify({ client, port, autostart }),
+          });
+          setMessage(`Client ${client} created.`);
+          document.getElementById("newClientName").value = "";
+          await loadClients();
+        } catch (err) {
+          setMessage(`Create failed - ${err.message}`, true);
+        }
+      });
+
+      clientsBody.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        doAction(button.dataset.client, button.dataset.action);
+      });
+
+      loadClients();
+      setInterval(loadClients, 10000);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenClaw client instance (%i)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/openclaw/instances/%i/instance.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=__OPENCLAW_USER__
+Group=__OPENCLAW_GROUP__
+Environment=OPENCLAW_BIN=__OPENCLAW_BIN__
+ExecStart=/usr/bin/bash -lc '/opt/openclaw/scripts/openclaw_client_instance.sh start %i'
+ExecStop=/usr/bin/bash -lc '/opt/openclaw/scripts/openclaw_client_instance.sh stop %i'
+ExecReload=/usr/bin/bash -lc '/opt/openclaw/scripts/openclaw_client_instance.sh restart %i'
+TimeoutStartSec=90
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

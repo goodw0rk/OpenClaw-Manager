@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="/opt/openclaw/scripts"
+TEMPLATE_SRC="/opt/openclaw/systemd/openclaw-client@.service"
+TEMPLATE_DST="/etc/systemd/system/openclaw-client@.service"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  openclaw_bws create <instance>   Enable autostart + start now
+  openclaw_bws remove <instance>   Disable autostart + stop now
+  openclaw_bws start <instance>    Start service now
+  openclaw_bws stop <instance>     Stop service now
+  openclaw_bws restart <instance>  Restart service now
+  openclaw_bws status <instance>   Show service status
+  openclaw_bws health <instance>   Probe instance health endpoint
+  openclaw_bws help
+EOF
+}
+
+validate_instance() {
+  local instance="$1"
+  if [[ ! "$instance" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    echo "Invalid instance name: $instance" >&2
+    exit 2
+  fi
+}
+
+unit_name() {
+  echo "openclaw-client@$1.service"
+}
+
+ensure_template() {
+  local oc_user oc_group oc_bin
+  if [[ ! -f "$TEMPLATE_SRC" ]]; then
+    echo "Missing template: $TEMPLATE_SRC" >&2
+    exit 1
+  fi
+  oc_user="${OPENCLAW_USER:-${SUDO_USER:-$USER}}"
+  oc_group="${OPENCLAW_GROUP:-$(id -gn "${oc_user}")}"
+  oc_bin="${OPENCLAW_BIN:-$(command -v openclaw || true)}"
+  if [[ -z "${oc_bin}" ]]; then
+    oc_bin="/home/${oc_user}/.npm-global/bin/openclaw"
+  fi
+
+  sed \
+    -e "s|__OPENCLAW_USER__|${oc_user}|g" \
+    -e "s|__OPENCLAW_GROUP__|${oc_group}|g" \
+    -e "s|__OPENCLAW_BIN__|${oc_bin}|g" \
+    "$TEMPLATE_SRC" | sudo tee "$TEMPLATE_DST" >/dev/null
+  sudo systemctl daemon-reload
+}
+
+ensure_instance() {
+  local instance="$1"
+  local env_file="/opt/openclaw/instances/${instance}/instance.env"
+  if [[ ! -f "$env_file" ]]; then
+    echo "Instance not found or not initialized: $instance" >&2
+    echo "Expected: $env_file" >&2
+    exit 1
+  fi
+}
+
+cmd_create() {
+  local instance="$1"
+  validate_instance "$instance"
+  ensure_instance "$instance"
+  ensure_template
+  sudo systemctl enable --now "$(unit_name "$instance")"
+  sudo systemctl status "$(unit_name "$instance")" --no-pager
+}
+
+cmd_remove() {
+  local instance="$1"
+  validate_instance "$instance"
+  sudo systemctl disable --now "$(unit_name "$instance")"
+}
+
+cmd_start() {
+  local instance="$1"
+  validate_instance "$instance"
+  ensure_instance "$instance"
+  ensure_template
+  sudo systemctl start "$(unit_name "$instance")"
+  sudo systemctl status "$(unit_name "$instance")" --no-pager
+}
+
+cmd_stop() {
+  local instance="$1"
+  validate_instance "$instance"
+  sudo systemctl stop "$(unit_name "$instance")"
+}
+
+cmd_restart() {
+  local instance="$1"
+  validate_instance "$instance"
+  ensure_instance "$instance"
+  ensure_template
+  sudo systemctl restart "$(unit_name "$instance")"
+  sudo systemctl status "$(unit_name "$instance")" --no-pager
+}
+
+cmd_status() {
+  local instance="$1"
+  validate_instance "$instance"
+  sudo systemctl status "$(unit_name "$instance")" --no-pager
+}
+
+cmd_health() {
+  local instance="$1"
+  validate_instance "$instance"
+  "$SCRIPT_DIR/openclaw_client_instance.sh" health "$instance"
+}
+
+main() {
+  local cmd="${1:-help}"
+  case "$cmd" in
+    create|remove|start|stop|restart|status|health)
+      if [[ $# -ne 2 ]]; then
+        usage
+        exit 2
+      fi
+      ;;
+    help|-h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown command: $cmd" >&2
+      usage
+      exit 2
+      ;;
+  esac
+
+  local instance="$2"
+  case "$cmd" in
+    create) cmd_create "$instance" ;;
+    remove) cmd_remove "$instance" ;;
+    start) cmd_start "$instance" ;;
+    stop) cmd_stop "$instance" ;;
+    restart) cmd_restart "$instance" ;;
+    status) cmd_status "$instance" ;;
+    health) cmd_health "$instance" ;;
+  esac
+}
+
+main "$@"

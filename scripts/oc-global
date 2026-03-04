@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run OpenClaw with a clean/default environment (global instance context).
+exec env \
+  -u OPENCLAW_BIND \
+  -u OPENCLAW_GATEWAY_PORT \
+  -u OPENCLAW_GATEWAY_TOKEN \
+  -u OPENCLAW_STATE_DIR \
+  -u OPENCLAW_CONFIG_PATH \
+  -u OPENCLAW_INSTANCE_DIR \
+  -u OPENCLAW_LOG_PATH \
+  -u OPENCLAW_PID_FILE \
+  -u CLIENT_NAME \
+  openclaw "$@"

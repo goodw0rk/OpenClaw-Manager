@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+  echo "Usage: oc-client <client-name> <openclaw args...>" >&2
+  echo "Example: oc-client client-a devices list --json" >&2
+  exit 2
+fi
+
+client="$1"
+shift
+
+env_file="/opt/openclaw/instances/${client}/instance.env"
+if [[ ! -f "${env_file}" ]]; then
+  echo "Client env not found: ${env_file}" >&2
+  exit 2
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "${env_file}"
+set +a
+
+exec openclaw "$@"
